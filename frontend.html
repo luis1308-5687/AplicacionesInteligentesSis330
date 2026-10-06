@@ -1,0 +1,422 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Analizador Biomecánico — Sesión en vivo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Work+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0B1220; --panel:#0F1729; --border:#1E2A3F; --text:#E7ECF5;
+    --muted:#8994A8; --accent:#2FD1C0; --warn:#F5A623;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);font-family:'Work Sans',sans-serif;color:var(--text)}
+  .mono{font-variant-numeric:tabular-nums}
+  header{display:flex;align-items:center;justify-content:space-between;padding:20px 40px;border-bottom:1px solid var(--border)}
+  .logo{display:flex;align-items:center;gap:12px;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:19px}
+  .tabs{display:flex;gap:4px;padding:0 40px;margin-top:24px}
+  .tab{padding:10px 18px;border-radius:8px 8px 0 0;font-size:14px;color:var(--muted);cursor:pointer;border:1px solid transparent}
+  .tab.activa{color:var(--text);background:var(--panel);border:1px solid var(--border);border-bottom-color:var(--panel)}
+  main{padding:0 40px 40px}
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:0 12px 12px 12px;padding:28px}
+  .grid{display:grid;grid-template-columns:2fr 1fr;gap:24px}
+  .video-wrap{position:relative;border-radius:12px;overflow:hidden;background:#050810;aspect-ratio:4/3}
+  #video, #overlay{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+  video{transform:scaleX(-1)}
+  .badge{position:absolute;top:14px;left:14px;background:rgba(10,15,26,.75);border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:12.5px;color:var(--muted)}
+  .estado{position:absolute;bottom:14px;left:14px;right:14px;background:rgba(10,15,26,.8);border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-size:13.5px}
+  .estado.alerta{border-color:var(--warn);color:var(--warn)}
+  button{background:var(--accent);color:#06201C;border:none;border-radius:8px;padding:11px 20px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit}
+  button:disabled{opacity:.5;cursor:default}
+  .card{background:#0F1729;border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-bottom:16px}
+  .card .nombre{font-size:13px;color:var(--muted)}
+  .card .valor{font-family:'Space Grotesk',sans-serif;font-size:28px;font-weight:600;margin-top:4px}
+  .alertas{max-height:220px;overflow-y:auto;margin-top:8px}
+  .alerta-item{display:flex;gap:12px;padding:10px 0;border-top:1px solid var(--border);font-size:13.5px}
+  .alerta-item .hora{color:var(--muted);width:52px;flex:none}
+  .desc{font-size:12px;color:var(--muted);margin-top:6px;line-height:1.4}
+  .aviso{color:var(--muted);font-size:13.5px;line-height:1.5;margin-top:18px}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <svg width="26" height="26" viewBox="0 0 28 28" fill="none">
+      <circle cx="14" cy="6" r="3" stroke="#2FD1C0" stroke-width="2"/>
+      <path d="M14 9v7M14 12l-6 3M14 12l6 3M14 16l-4 8M14 16l4 8" stroke="#2FD1C0" stroke-width="2" stroke-linecap="round"/>
+    </svg>
+    Analizador Biomecánico
+  </div>
+  <div id="conexion" style="font-size:13px;color:var(--muted)">Desconectado</div>
+</header>
+
+<div class="tabs">
+  <div class="tab activa" data-tab="vivo">En vivo</div>
+  <div class="tab" data-tab="subir">Subir video</div>
+</div>
+
+<main>
+  <div class="panel" id="panel-vivo">
+    <div class="grid">
+      <div>
+        <div class="video-wrap">
+          <video id="video" autoplay playsinline muted></video>
+          <canvas id="overlay"></canvas>
+          <div class="badge">Cámara · RTMPose (lightweight)</div>
+          <div class="estado" id="estado-caja">Cámara apagada</div>
+        </div>
+        <div style="margin-top:16px;display:flex;gap:12px">
+          <button id="btn-iniciar">Iniciar cámara</button>
+          <button id="btn-detener" disabled>Detener</button>
+        </div>
+        <div class="alertas" id="lista-alertas"></div>
+      </div>
+      <div>
+        <div class="card">
+          <div class="nombre">POSTURA (TRONCO)</div>
+          <div class="valor mono" id="valor-tronco">—</div>
+        </div>
+        <div class="card">
+          <div class="nombre">INCLINACIÓN DE CABEZA</div>
+          <div class="valor mono" id="valor-cabeza">—</div>
+        </div>
+        <div class="aviso">
+          Cadencia y fatiga todavía no están acá: necesitan varios segundos
+          de ventana o un modelo ya entrenado, y quedaron para la próxima
+          vuelta. Por ahora, esto muestra postura y cabeza calculadas
+          frame a frame con tus propias funciones.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel" id="panel-subir" style="display:none">
+    <div style="display:flex;gap:12px;align-items:center">
+      <input type="file" id="archivo-video" accept="video/*">
+      <button id="btn-subir">Analizar video</button>
+    </div>
+    <div id="estado-subida" style="margin-top:16px;color:var(--muted);font-size:14px"></div>
+
+    <div id="resultado-subida" style="display:none;margin-top:24px">
+      <div class="grid">
+        <div>
+          <div class="card"><div class="nombre">DURACIÓN</div><div class="valor mono" id="r-duracion">—</div></div>
+          <div class="card">
+            <div class="nombre">CADENCIA</div><div class="valor mono" id="r-cadencia">—</div>
+            <div class="desc">Pasos por minuto (los dos pies juntos).</div>
+          </div>
+          <div class="card">
+            <div class="nombre">IMPACTO PROMEDIO</div><div class="valor mono" id="r-impacto">—</div>
+            <div class="desc">Qué tan brusco es el frenado del pie al tocar el piso. Más alto = aterrizaje más seco.</div>
+          </div>
+          <div class="card">
+            <div class="nombre">ASIMETRÍA</div><div class="valor mono" id="r-asimetria">—</div>
+            <div class="desc">Diferencia de ritmo entre tu pierna izquierda y derecha. Un poco siempre hay; mucho y sostenido puede indicar que favorecés un lado.</div>
+          </div>
+        </div>
+        <div>
+          <div class="card">
+            <div class="nombre">TRONCO — PROMEDIO DE SESIÓN</div><div class="valor mono" id="r-base-tronco">—</div>
+            <div class="desc">Inclinación promedio del tronco hacia adelante (+) o atrás (-), respecto a la vertical.</div>
+          </div>
+          <div class="card">
+            <div class="nombre">CABEZA — PROMEDIO DE SESIÓN</div><div class="valor mono" id="r-base-cabeza">—</div>
+            <div class="desc">Lo mismo, para la inclinación de la cabeza respecto a los hombros.</div>
+          </div>
+          <div class="card">
+            <div class="nombre">FATIGA — DESVIACIÓN ACUMULADA</div>
+            <div class="valor mono" id="r-fatiga-valor">—</div>
+            <div style="height:10px;border-radius:5px;background:var(--border);overflow:hidden;margin-top:12px">
+              <div id="r-fatiga-barra" style="height:100%;width:0%;background:var(--warn);transition:width .4s"></div>
+            </div>
+            <div class="desc" id="r-fatiga-nota">
+              Mide qué tan distinto es tu movimiento al final respecto al inicio de la sesión.
+              Es <b>compatible con fatiga</b>, pero también puede deberse a un cambio de ritmo:
+              no es un diagnóstico.
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="card" style="margin-top:8px">
+        <div class="nombre" style="margin-bottom:8px">PATRÓN DE PISADA</div>
+        <div class="desc" style="margin-top:0;margin-bottom:12px">
+          Con qué parte del pie tocás el piso primero. No hay un patrón "correcto" para todos --
+          cada uno reparte el esfuerzo distinto (talón carga más la rodilla, antepié carga más
+          la pantorrilla/Aquiles). Un cambio brusco durante la sesión es más relevante que el
+          patrón en sí.
+        </div>
+        <div id="r-pisada" style="display:flex;gap:24px"></div>
+      </div>
+      <div class="card" style="margin-top:8px">
+        <div class="nombre" style="margin-bottom:8px">ALERTAS DETECTADAS (<span id="r-cant-alertas">0</span>)</div>
+        <div class="alertas" id="r-alertas" style="max-height:320px"></div>
+      </div>
+      <div class="card" style="margin-top:8px">
+        <div class="nombre" style="margin-bottom:12px">REVISIÓN DE CASOS GRAVES</div>
+        <div style="display:grid;grid-template-columns:220px 1fr;gap:20px">
+          <div>
+            <div style="width:220px;aspect-ratio:9/16;background:#000;border-radius:18px;overflow:hidden;border:4px solid var(--border)">
+              <video id="clip-preview" controls playsinline style="width:100%;height:100%;object-fit:contain"></video>
+            </div>
+            <div id="clip-preview-vacio" style="text-align:center;color:var(--muted);font-size:12px;margin-top:8px">
+              Elegí un caso de la derecha
+            </div>
+          </div>
+          <div id="r-clips" style="display:flex;flex-direction:column;gap:8px"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+function formatTiempo(segundos) {
+  const min = Math.floor(segundos / 60);
+  const seg = Math.round(segundos % 60).toString().padStart(2, '0');
+  return `${min}:${seg}`;
+}
+const tabs = document.querySelectorAll('.tab');
+tabs.forEach(t => t.addEventListener('click', () => {
+  tabs.forEach(x => x.classList.remove('activa'));
+  t.classList.add('activa');
+  document.getElementById('panel-vivo').style.display = t.dataset.tab === 'vivo' ? '' : 'none';
+  document.getElementById('panel-subir').style.display = t.dataset.tab === 'subir' ? '' : 'none';
+}));
+
+const video = document.getElementById('video');
+const canvas = document.getElementById('overlay');
+const ctx = canvas.getContext('2d');
+const estadoCaja = document.getElementById('estado-caja');
+const conexionTexto = document.getElementById('conexion');
+const listaAlertas = document.getElementById('lista-alertas');
+
+let ws = null;
+let stream = null;
+let enviando = false;
+
+// Pares de puntos COCO-17 para dibujar el esqueleto (mismos índices que
+// tu proyecto: NOSE=0, hombros 5/6, codos 7/8, muñecas 9/10, caderas
+// 11/12, rodillas 13/14, tobillos 15/16).
+const PARES = [
+  [5,7],[7,9],[6,8],[8,10],[5,6],[5,11],[6,12],[11,12],
+  [11,13],[13,15],[12,14],[14,16],[0,5],[0,6],
+];
+
+function dibujarEsqueleto(keypoints) {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const sx = canvas.width, sy = canvas.height;
+  ctx.strokeStyle = '#2FD1C0';
+  ctx.fillStyle = '#2FD1C0';
+  ctx.lineWidth = 3;
+  for (const [a, b] of PARES) {
+    const [x1, y1] = keypoints[a];
+    const [x2, y2] = keypoints[b];
+    ctx.beginPath();
+    // espejado horizontal para que coincida con el video (transform: scaleX(-1))
+    ctx.moveTo(sx - x1, y1);
+    ctx.lineTo(sx - x2, y2);
+    ctx.stroke();
+  }
+  for (const [x, y] of keypoints) {
+    ctx.beginPath();
+    ctx.arc(sx - x, y, 4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function agregarAlerta(texto) {
+  const hora = new Date().toLocaleTimeString('es-BO', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+  const item = document.createElement('div');
+  item.className = 'alerta-item';
+  item.innerHTML = `<span class="hora mono">${hora}</span><span>${texto}</span>`;
+  listaAlertas.prepend(item);
+}
+
+async function iniciar() {
+  stream = await navigator.mediaDevices.getUserMedia({video: {width: 640, height: 480}});
+  video.srcObject = stream;
+  await video.play();
+  canvas.width = video.videoWidth || 640;
+  canvas.height = video.videoHeight || 480;
+
+  ws = new WebSocket(`ws://${location.host}/ws`);
+  ws.onopen = () => { conexionTexto.textContent = 'Conectado'; };
+  ws.onclose = () => { conexionTexto.textContent = 'Desconectado'; };
+  ws.onerror = () => { conexionTexto.textContent = 'Error de conexión'; };
+
+  ws.onmessage = (ev) => {
+    const d = JSON.parse(ev.data);
+    if (d.estado === 'sin_persona') {
+      estadoCaja.textContent = 'Buscando persona en el cuadro…';
+      estadoCaja.classList.remove('alerta');
+      return;
+    }
+    if (d.keypoints) dibujarEsqueleto(d.keypoints);
+
+    document.getElementById('valor-tronco').textContent = d.tronco.toFixed(1) + '°';
+    document.getElementById('valor-cabeza').textContent = d.cabeza.toFixed(1) + '°';
+
+    if (d.estado === 'calibrando') {
+      estadoCaja.textContent = `Calibrando línea base… ${d.segundos_restantes}s`;
+      estadoCaja.classList.remove('alerta');
+    } else if (d.alerta) {
+      estadoCaja.textContent = d.alerta;
+      estadoCaja.classList.add('alerta');
+      agregarAlerta(d.alerta);
+    } else {
+      estadoCaja.textContent = 'Postura dentro de tu línea base';
+      estadoCaja.classList.remove('alerta');
+    }
+  };
+
+  document.getElementById('btn-iniciar').disabled = true;
+  document.getElementById('btn-detener').disabled = false;
+  enviarFrames();
+}
+
+function enviarFrames() {
+  enviando = true;
+  const enviarUno = () => {
+    if (!enviando || !ws || ws.readyState !== WebSocket.OPEN) return;
+    const tmp = document.createElement('canvas');
+    tmp.width = video.videoWidth; tmp.height = video.videoHeight;
+    tmp.getContext('2d').drawImage(video, 0, 0);
+    ws.send(tmp.toDataURL('image/jpeg', 0.6));
+    setTimeout(enviarUno, 200); // ~5 envíos por segundo
+  };
+  enviarUno();
+}
+
+function detener() {
+  enviando = false;
+  if (ws) ws.close();
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  estadoCaja.textContent = 'Cámara apagada';
+  estadoCaja.classList.remove('alerta');
+  document.getElementById('btn-iniciar').disabled = false;
+  document.getElementById('btn-detener').disabled = true;
+}
+
+document.getElementById('btn-iniciar').addEventListener('click', () => {
+  iniciar().catch(err => { estadoCaja.textContent = 'No se pudo abrir la cámara: ' + err.message; });
+});
+document.getElementById('btn-detener').addEventListener('click', detener);
+
+// --- Subir video ---
+const btnSubir = document.getElementById('btn-subir');
+const estadoSubida = document.getElementById('estado-subida');
+const resultadoSubida = document.getElementById('resultado-subida');
+
+btnSubir.addEventListener('click', async () => {
+  const input = document.getElementById('archivo-video');
+  const archivo = input.files[0];
+  if (!archivo) {
+    estadoSubida.textContent = 'Elegí un archivo de video primero.';
+    return;
+  }
+
+  btnSubir.disabled = true;
+  resultadoSubida.style.display = 'none';
+  estadoSubida.textContent = `Procesando "${archivo.name}"… esto puede tardar varios minutos, según la duración del video.`;
+
+  const datos = new FormData();
+  datos.append('archivo', archivo);
+
+  try {
+    const resp = await fetch('/upload', {method: 'POST', body: datos});
+    if (!resp.ok) throw new Error(`El servidor respondió ${resp.status}`);
+    const d = await resp.json();
+
+    document.getElementById('r-duracion').textContent = d.duracion_seg.toFixed(0) + ' s';
+    document.getElementById('r-cadencia').textContent = d.cadencia.toFixed(0) + ' pasos/min';
+    document.getElementById('r-impacto').textContent = d.impacto.toFixed(2);
+    document.getElementById('r-asimetria').textContent = d.asimetria !== null ? d.asimetria.toFixed(1) + '%' : '—';
+    document.getElementById('r-base-tronco').textContent = d.promedio_tronco.toFixed(1) + '°';
+    document.getElementById('r-base-cabeza').textContent = d.promedio_cabeza.toFixed(1) + '°';
+
+    const fatigaValor = document.getElementById('r-fatiga-valor');
+    const fatigaBarra = document.getElementById('r-fatiga-barra');
+    const fatigaNota = document.getElementById('r-fatiga-nota');
+    if (d.fatiga && d.fatiga.disponible) {
+      fatigaValor.textContent = d.fatiga.barra_pct.toFixed(0) + '% de desviación acumulada';
+      fatigaBarra.style.width = d.fatiga.barra_pct + '%';
+      fatigaBarra.style.background = d.fatiga.barra_pct > 60 ? 'var(--warn)' : 'var(--accent)';
+    } else {
+      fatigaValor.textContent = '—';
+      fatigaBarra.style.width = '0%';
+      fatigaNota.innerHTML = 'Modelo de fatiga no encontrado en el servidor '
+        + '(<code>modelo_fatiga_general.pt</code>) -- esta barra queda deshabilitada hasta que esté presente.';
+    }
+
+    const pisadaCont = document.getElementById('r-pisada');
+    pisadaCont.innerHTML = '';
+    const etiquetasPisada = {talon: 'Talón', mediopie: 'Mediopié', antepie: 'Antepié'};
+    for (const [patron, info] of Object.entries(d.patron_pisada || {})) {
+      const div = document.createElement('div');
+      div.innerHTML = `<div style="font-size:22px;font-weight:600" class="mono">${info.pct.toFixed(0)}%</div>
+                        <div style="font-size:12.5px;color:var(--muted)">${etiquetasPisada[patron] || patron} (${info.conteo})</div>`;
+      pisadaCont.appendChild(div);
+    }
+
+    const listaR = document.getElementById('r-alertas');
+    listaR.innerHTML = '';
+    document.getElementById('r-cant-alertas').textContent = d.alertas.length;
+    for (const a of d.alertas) {
+      const item = document.createElement('div');
+      item.className = 'alerta-item';
+      item.style.flexDirection = 'column';
+      item.style.alignItems = 'stretch';
+      let html = `<div style="display:flex;gap:12px"><span class="hora mono">${formatTiempo(a.segundo)}</span><span>${a.texto}</span></div>`;
+      if (a.recomendacion) {
+        html += `<div style="margin-top:6px;margin-left:64px;font-size:12.5px;color:var(--muted)">💡 ${a.recomendacion}</div>`;
+      }
+      item.innerHTML = html;
+      listaR.appendChild(item);
+    }
+
+    const clipsCont = document.getElementById('r-clips');
+    clipsCont.innerHTML = '';
+    const preview = document.getElementById('clip-preview');
+    const previewVacio = document.getElementById('clip-preview-vacio');
+    preview.pause();
+    preview.removeAttribute('src');
+    previewVacio.style.display = '';
+    const conClip = d.alertas.filter(a => a.clip_url);
+
+    if (conClip.length === 0) {
+      clipsCont.innerHTML = '<div style="color:var(--muted);font-size:13.5px">Ningún clip disponible para esta sesión.</div>';
+    }
+    conClip.forEach((a, i) => {
+      const boton = document.createElement('div');
+      boton.style.cssText = 'cursor:pointer;background:#0B1220;border:1px solid var(--border);border-radius:10px;padding:10px 12px;transition:border-color .15s';
+      boton.dataset.clipUrl = a.clip_url;
+      boton.innerHTML = `
+        <div style="font-size:13px"><b class="mono">${formatTiempo(a.segundo)}</b> -- ${a.texto.replace(/^\[.*?\]\s*/, '')}</div>
+        ${a.recomendacion ? `<div style="font-size:12px;margin-top:4px;color:var(--muted)">💡 ${a.recomendacion}</div>` : ''}
+      `;
+      boton.addEventListener('click', () => {
+        preview.src = a.clip_url;
+        preview.play().catch(() => {});
+        previewVacio.style.display = 'none';
+        clipsCont.querySelectorAll('[data-clip-url]').forEach(b => b.style.borderColor = 'var(--border)');
+        boton.style.borderColor = 'var(--accent)';
+      });
+      clipsCont.appendChild(boton);
+      if (i === 0) boton.click();  // el primero (el más severo) se carga solo
+    });
+
+    estadoSubida.textContent = 'Listo.';
+    resultadoSubida.style.display = '';
+  } catch (err) {
+    estadoSubida.textContent = 'Error al procesar el video: ' + err.message;
+  } finally {
+    btnSubir.disabled = false;
+  }
+});
+
+</script>
+</body>
+</html>
